@@ -225,8 +225,8 @@ class TPRRNN(nn.Module):
     def __init__(self, word_emb_size, n_symbols, d_symbols, n_roles, d_roles, 
             hidden_size, device): 
         super(TPRRNN, self).__init__()
-        self.S = nn.Embedding(n_symbols, d_symbols)
-        self.R = nn.Embedding(n_roles, d_roles)
+        self.S = nn.Linear(n_symbols, d_symbols, bias=False)
+        self.R = nn.Linear(n_roles, d_roles, bias=False)
         self.Ws_in = nn.Linear(word_emb_size, n_symbols, bias=True)
         self.Wr_in = nn.Linear(word_emb_size, n_roles, bias=True)
         self.Ws_rec = nn.Linear(d_symbols * d_roles, n_symbols, bias=False)
@@ -240,6 +240,7 @@ class TPRRNN(nn.Module):
         self.device = device
                  
     def forward(self, X):
+        Q = torch.tensor(.0, device=self.device)
         num_batches = X.shape[0]
         prev_fwd = torch.zeros(X.shape[0], self.d_symbols, self.d_roles, 
                 device=self.device)
@@ -249,20 +250,19 @@ class TPRRNN(nn.Module):
         bwds = []
 
         for wt in torch.split(X, 1, 1):
-            prev_fwd = self.step(wt, prev_fwd)
+            prev_fwd, Q = self.step(wt, prev_fwd, Q)
             fwds.append(prev_fwd.view(num_batches, -1))
 
         for wt in torch.split(X, 1, 1)[::-1]:
-            prev_bwd = self.step(wt, prev_bwd)
+            prev_bwd, Q = self.step(wt, prev_bwd, Q)
             bwds.append(prev_bwd.view(num_batches, -1))
 
         fwds = torch.stack(fwds, dim=1)
         bwds = torch.stack(bwds, dim=1)
         hidden = torch.cat((fwds, bwds), dim=2)
-        return self.W_proj(hidden)
+        return self.W_proj(hidden), Q
 
-    def step(self, wt, prev):
-        Q = torch.tensor(.0, device=self.device)
+    def step(self, wt, prev, Q):
         num_batches = prev.shape[0]
         prev = prev.view(num_batches, 1, -1)
         att_s = torch.sigmoid(self.Ws_in(wt) + self.Ws_rec(prev))
@@ -271,11 +271,9 @@ class TPRRNN(nn.Module):
         Q += torch.sum((att_r*att_r) * ((1-att_r)*(1-att_r)))
         Q += torch.sum((torch.sum(att_s*att_s, dim=1)-1)**2)
         Q += torch.sum((torch.sum(att_r*att_r, dim=1)-1)**2)
-        st = torch.bmm(att_s.view(num_batches, 1, self.n_symbols),
-                       self.S(torch.arange(self.n_symbols, device=self.device)).view(1, self.n_symbols, self.d_symbols).repeat((num_batches, 1, 1)))
-        rt = torch.bmm(att_r.view(num_batches, 1, self.n_roles),
-                       self.R(torch.arange(self.n_roles, device=self.device)).view(1, self.n_roles, self.d_roles).repeat((num_batches, 1, 1)))
+        st = self.S(att_s)
+        rt = self.R(att_r)
         vt = torch.bmm(st.view(num_batches, -1, 1), rt.view(num_batches, 1, -1))
 
-        return vt
+        return vt, Q
 

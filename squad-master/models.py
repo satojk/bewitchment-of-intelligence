@@ -108,8 +108,8 @@ class BiDAF_2(BiDAF):
         c_emb = self.emb(cw_idxs)         # (batch_size, c_len, hidden_size)
         q_emb = self.emb(qw_idxs)         # (batch_size, q_len, hidden_size)
 
-        c_enc = self.enc(c_emb)    # (batch_size, c_len, 2 * hidden_size)
-        q_enc = self.enc(q_emb)    # (batch_size, q_len, 2 * hidden_size)
+        c_enc, Q1 = self.enc(c_emb)    # (batch_size, c_len, 2 * hidden_size)
+        q_enc, Q2 = self.enc(q_emb)    # (batch_size, q_len, 2 * hidden_size)
 
         att = self.att(c_enc, q_enc,
                        c_mask, q_mask)    # (batch_size, c_len, 8 * hidden_size)
@@ -118,5 +118,5 @@ class BiDAF_2(BiDAF):
 
         out = self.out(att, mod, c_mask)  # 2 tensors, each (batch_size, c_len)
 
-        return out
+        return out, Q1+Q2
 
