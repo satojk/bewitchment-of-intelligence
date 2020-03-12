@@ -223,7 +223,7 @@ class BiDAFOutput(nn.Module):
 
 class TPRRNN(nn.Module):
     def __init__(self, word_emb_size, n_symbols, d_symbols, n_roles, d_roles, 
-            hidden_size, device): 
+            hidden_size): 
         super(TPRRNN, self).__init__()
         self.S = nn.Linear(n_symbols, d_symbols, bias=False)
         self.R = nn.Linear(n_roles, d_roles, bias=False)
@@ -237,37 +237,41 @@ class TPRRNN(nn.Module):
         self.d_symbols = d_symbols
         self.n_roles = n_roles
         self.d_roles = d_roles
-        self.device = device
                  
     def forward(self, X):
-        Q = torch.tensor(.0, device=self.device)
         num_batches = X.shape[0]
-        prev_fwd = torch.zeros(X.shape[0], self.d_symbols, self.d_roles, 
-                device=self.device)
-        prev_bwd = torch.zeros(X.shape[0], self.d_symbols, self.d_roles, 
-                device=self.device)
+        prev_fwd = None
+        prev_bwd = None
         fwds = []
         bwds = []
+        Qfwds = []
+        Qbwds = []
 
         for wt in torch.split(X, 1, 1):
-            prev_fwd, Q = self.step(wt, prev_fwd, Q)
+            prev_fwd, Q = self.step(wt, prev_fwd, num_batches)
             fwds.append(prev_fwd.view(num_batches, -1))
+            Qfwds.append(Q)
 
         for wt in torch.split(X, 1, 1)[::-1]:
-            prev_bwd, Q = self.step(wt, prev_bwd, Q)
+            prev_bwd, Q = self.step(wt, prev_bwd, num_batches)
             bwds.append(prev_bwd.view(num_batches, -1))
+            Qbwds.append(Q)
 
         fwds = torch.stack(fwds, dim=1)
         bwds = torch.stack(bwds, dim=1)
         hidden = torch.cat((fwds, bwds), dim=2)
+        Q = torch.sum(torch.stack(Qfwds)) + torch.sum(torch.stack(Qbwds))
         return self.W_proj(hidden), Q
 
-    def step(self, wt, prev, Q):
-        num_batches = prev.shape[0]
-        prev = prev.view(num_batches, 1, -1)
-        att_s = torch.sigmoid(self.Ws_in(wt) + self.Ws_rec(prev))
-        att_r = torch.sigmoid(self.Wr_in(wt) + self.Wr_rec(prev))
-        Q += torch.sum((att_s*att_s) * ((1-att_s)*(1-att_s)))
+    def step(self, wt, prev, num_batches):
+        if prev is None:
+            att_s = torch.sigmoid(self.Ws_in(wt))
+            att_r = torch.sigmoid(self.Wr_in(wt))
+        else: 
+            prev = prev.view(num_batches, 1, -1)
+            att_s = torch.sigmoid(self.Ws_in(wt) + self.Ws_rec(prev))
+            att_r = torch.sigmoid(self.Wr_in(wt) + self.Wr_rec(prev))
+        Q = torch.sum((att_s*att_s) * ((1-att_s)*(1-att_s)))
         Q += torch.sum((att_r*att_r) * ((1-att_r)*(1-att_r)))
         Q += torch.sum((torch.sum(att_s*att_s, dim=1)-1)**2)
         Q += torch.sum((torch.sum(att_r*att_r, dim=1)-1)**2)

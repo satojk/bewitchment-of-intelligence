@@ -75,7 +75,7 @@ class BiDAF_2(BiDAF):
     '''
     Experiment 2: BiDAF but with a TPRRNN in the encoding layer
     '''
-    def __init__(self, word_vectors, hidden_size, device, drop_prob=0.):
+    def __init__(self, word_vectors, hidden_size, drop_prob=0.):
         super(BiDAF, self).__init__()
         self.emb = layers.Embedding(word_vectors=word_vectors,
                                     hidden_size=hidden_size,
@@ -86,8 +86,7 @@ class BiDAF_2(BiDAF):
                                  d_symbols=10,
                                  n_roles=20,
                                  d_roles=10,
-                                 hidden_size=hidden_size,
-                                 device=device)
+                                 hidden_size=hidden_size)
 
         self.att = layers.BiDAFAttention(hidden_size=2 * hidden_size,
                                          drop_prob=drop_prob)

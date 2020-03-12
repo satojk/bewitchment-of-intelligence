@@ -23,6 +23,7 @@ from tqdm import tqdm
 from ujson import load as json_load
 from util import collate_fn, SQuAD
 
+_QUANTIZATION_FACTOR = 0.00001
 
 def main(args):
     # Set up logging and devices
@@ -48,7 +49,6 @@ def main(args):
     log.info('Building model...')
     model = BiDAF_2(word_vectors=word_vectors,
                     hidden_size=args.hidden_size,
-                    device=device,
                     drop_prob=args.drop_prob)
     model = nn.DataParallel(model, args.gpu_ids)
     if args.load_path:
@@ -106,7 +106,7 @@ def main(args):
                 # Forward
                 (log_p1, log_p2), Q = model(cw_idxs, qw_idxs)
                 y1, y2 = y1.to(device), y2.to(device)
-                loss = F.nll_loss(log_p1, y1) + F.nll_loss(log_p2, y2) + Q*0.00001
+                loss = F.nll_loss(log_p1, y1) + F.nll_loss(log_p2, y2) + (Q * _QUANTIZATION_FACTOR)
 
                 loss_val = loss.item()
 
@@ -175,7 +175,7 @@ def evaluate(model, data_loader, device, eval_file, max_len, use_squad_v2):
             # Forward
             (log_p1, log_p2), Q = model(cw_idxs, qw_idxs)
             y1, y2 = y1.to(device), y2.to(device)
-            loss = F.nll_loss(log_p1, y1) + F.nll_loss(log_p2, y2)
+            loss = F.nll_loss(log_p1, y1) + F.nll_loss(log_p2, y2) + (Q * _QUANTIZATION_FACTOR)
             nll_meter.update(loss.item(), batch_size)
 
             # Get F1 and EM scores
