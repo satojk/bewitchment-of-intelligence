@@ -174,6 +174,23 @@ def get_test_args():
     return args
 
 
+def get_prodding_args():
+    parser = argparse.ArgumentParser('Prod a trained model for encodings')
+
+    add_common_args(parser)
+    add_train_test_args(parser)
+
+    parser.add_argument('--split',
+                        type=str,
+                        default='test',
+                        choices=('train', 'dev', 'test'),
+                        help='Split to use for testing.')
+
+    args = parser.parse_args()
+
+    return args
+
+
 def add_common_args(parser):
     """Add arguments common to all 3 scripts: setup.py, train.py, test.py"""
     parser.add_argument('--train_record_file',

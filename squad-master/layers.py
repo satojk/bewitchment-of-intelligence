@@ -281,3 +281,55 @@ class TPRRNN(nn.Module):
 
         return vt, Q
 
+class TPRRNNProdder(TPRRNN):
+    def forward(self, X):
+        Q = torch.tensor(.0, device=self.device)
+        num_batches = X.shape[0]
+        prev_fwd = torch.zeros(X.shape[0], self.d_symbols, self.d_roles, 
+                device=self.device)
+        prev_bwd = torch.zeros(X.shape[0], self.d_symbols, self.d_roles, 
+                device=self.device)
+        fwds = []
+        bwds = []
+
+        fwds_att_s = []
+        fwds_att_r = []
+        bwds_att_s = []
+        bwds_att_r = []
+
+        for wt in torch.split(X, 1, 1):
+            prev_fwd, Q, att_s, att_r = self.step(wt, prev_fwd, Q)
+            fwds.append(prev_fwd.view(num_batches, -1))
+            fwds_att_s.append(att_s)
+            fwds_att_r.append(att_r)
+
+        for wt in torch.split(X, 1, 1)[::-1]:
+            prev_bwd, Q, att_s, att_r = self.step(wt, prev_bwd, Q)
+            bwds.append(prev_bwd.view(num_batches, -1))
+            bwds_att_s.append(att_s)
+            bwds_att_r.append(att_r)
+
+        fwds = torch.stack(fwds, dim=1)
+        bwds = torch.stack(bwds, dim=1)
+        fwds_att_s = torch.stack(fwds_att_s, dim=1)
+        fwds_att_r = torch.stack(fwds_att_r, dim=1)
+        bwds_att_s = torch.stack(bwds_att_s, dim=1)
+        bwds_att_r = torch.stack(bwds_att_r, dim=1)
+        hidden = torch.cat((fwds, bwds), dim=2)
+        return self.W_proj(hidden), Q, fwds_att_s, fwds_att_r, bwds_att_s, bwds_att_r
+
+    def step(self, wt, prev, Q):
+        num_batches = prev.shape[0]
+        prev = prev.view(num_batches, 1, -1)
+        att_s = torch.sigmoid(self.Ws_in(wt) + self.Ws_rec(prev))
+        att_r = torch.sigmoid(self.Wr_in(wt) + self.Wr_rec(prev))
+        Q += torch.sum((att_s*att_s) * ((1-att_s)*(1-att_s)))
+        Q += torch.sum((att_r*att_r) * ((1-att_r)*(1-att_r)))
+        Q += torch.sum((torch.sum(att_s*att_s, dim=1)-1)**2)
+        Q += torch.sum((torch.sum(att_r*att_r, dim=1)-1)**2)
+        st = self.S(att_s)
+        rt = self.R(att_r)
+        vt = torch.bmm(st.view(num_batches, -1, 1), rt.view(num_batches, 1, -1))
+
+        return vt, Q, att_s, att_r
+
